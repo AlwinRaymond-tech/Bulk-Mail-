@@ -61,10 +61,11 @@ export function getPasswordStrength(password) {
 }
 
 export class ApiError extends Error {
-  constructor(message, code, details) {
+  constructor(message, code, details, status) {
     super(message);
     this.name = 'ApiError';
     this.code = code;
     this.details = details;
+    this.status = status;
   }
 }

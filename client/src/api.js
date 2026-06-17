@@ -18,7 +18,7 @@ async function parseResponse(res) {
   }
 
   if (!res.ok) {
-    throw new ApiError(data.message || 'Request failed', data.code, data.details);
+    throw new ApiError(data.message || 'Request failed', data.code, data.details, res.status);
   }
 
   return data;
@@ -37,21 +37,42 @@ async function request(url, options) {
   }
 }
 
+const formatUser = (user = {}) => ({
+  ...user,
+  id: user.id || user._id,
+});
+
+const normalizeAuthResponse = (data) => {
+  const payload = data.data || data;
+  return {
+    ...data,
+    token: payload.token,
+    user: formatUser(payload.user),
+  };
+};
+
 export const api = {
   async signup({ name, email, password, confirmPassword }) {
-    return request(`${API_BASE}/auth/signup`, {
+    const options = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password, confirmPassword }),
-    });
+    };
+
+    try {
+      return normalizeAuthResponse(await request(`${API_BASE}/auth/signup`, options));
+    } catch (err) {
+      if (err.status !== 404) throw err;
+      return normalizeAuthResponse(await request(`${API_BASE}/auth/register`, options));
+    }
   },
 
   async login(email, password) {
-    return request(`${API_BASE}/auth/login`, {
+    return normalizeAuthResponse(await request(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
-    });
+    }));
   },
 
   async verifyToken() {
@@ -62,7 +83,19 @@ export const api = {
       const res = await fetch(`${API_BASE}/auth/verify`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      return res.json();
+      if (res.ok) return res.json();
+    } catch {
+      // Fall through to the older Render API route.
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { valid: false };
+      const data = await res.json();
+      const user = data.data?.user || data.user;
+      return user ? { valid: true, user: formatUser(user) } : { valid: false };
     } catch {
       return { valid: false };
     }
