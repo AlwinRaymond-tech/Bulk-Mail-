@@ -24,16 +24,27 @@ async function parseResponse(res) {
   return data;
 }
 
-async function request(url, options) {
+async function request(url, options = {}, { timeoutMs = 30000 } = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const res = await fetch(url, options);
+    const res = await fetch(url, { ...options, signal: controller.signal });
     return parseResponse(res);
   } catch (err) {
     if (err instanceof ApiError) throw err;
+    if (err.name === 'AbortError') {
+      throw new ApiError(
+        'The server is taking too long to respond. Please check your SMTP settings and try again.',
+        'TIMEOUT'
+      );
+    }
     throw new ApiError(
       'Cannot connect to server. Make sure the backend is running on port 5000.',
       'NETWORK_ERROR'
     );
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -115,14 +126,18 @@ export const api = {
   },
 
   async sendEmail({ subject, body, recipients }) {
-    return request(`${API_BASE}/emails/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${getToken()}`,
+    return request(
+      `${API_BASE}/emails/send`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${getToken()}`,
+        },
+        body: JSON.stringify({ subject, body, recipients: normalizeRecipients(recipients) }),
       },
-      body: JSON.stringify({ subject, body, recipients: normalizeRecipients(recipients) }),
-    });
+      { timeoutMs: 45000 }
+    );
   },
 
   async getHistory(page = 1, limit = 10) {

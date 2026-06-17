@@ -10,17 +10,38 @@ const {
 const { getEmailDeliveryMode, getSuccessMessage, getCampaignStatus, shouldUseDemoDelivery } = require('../utils/emailDelivery');
 
 const router = express.Router();
+const parseSmtpTimeout = () => {
+  const value = parseInt(process.env.SMTP_TIMEOUT_MS || '15000', 10);
+  return Number.isFinite(value) && value > 0 ? value : 15000;
+};
+
+const SMTP_TIMEOUT_MS = parseSmtpTimeout();
 
 const createTransporter = () => {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '587', 10),
     secure: process.env.SMTP_SECURE === 'true',
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
     },
   });
+};
+
+const sendMailWithTimeout = (transporter, message) => {
+  return Promise.race([
+    transporter.sendMail(message),
+    new Promise((_, reject) => {
+      setTimeout(
+        () => reject(new Error('SMTP server timed out. Check SMTP host, port, secure mode, username, and app password.')),
+        SMTP_TIMEOUT_MS
+      );
+    }),
+  ]);
 };
 
 const isValidEmail = (email) => {
@@ -92,7 +113,7 @@ router.post('/send', authMiddleware, async (req, res) => {
 
     for (const recipient of recipientList) {
       try {
-        await transporter.sendMail({
+        await sendMailWithTimeout(transporter, {
           from: process.env.SMTP_USER,
           to: recipient,
           subject,
@@ -106,6 +127,10 @@ router.post('/send', authMiddleware, async (req, res) => {
         sendErrors.push({ recipient, message: err.message });
         console.error(`Failed to send to ${recipient}:`, err.message);
       }
+    }
+
+    if (typeof transporter.close === 'function') {
+      transporter.close();
     }
 
     let status = 'sent';

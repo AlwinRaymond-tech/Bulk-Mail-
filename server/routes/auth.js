@@ -20,7 +20,7 @@ const createToken = (user) =>
     { expiresIn: '24h' }
   );
 
-router.post('/signup', async (req, res) => {
+const signupHandler = async (req, res) => {
   try {
     const { name, email, password, confirmPassword } = req.body;
 
@@ -69,7 +69,10 @@ router.post('/signup', async (req, res) => {
     console.error('Signup error:', error);
     res.status(500).json({ message: 'Server error during signup.' });
   }
-});
+};
+
+router.post('/signup', signupHandler);
+router.post('/register', signupHandler);
 
 router.post('/login', async (req, res) => {
   try {
@@ -132,6 +135,28 @@ router.get('/verify', async (req, res) => {
     res.json({ valid: true, user: formatUser(user) });
   } catch {
     res.status(401).json({ valid: false });
+  }
+});
+
+router.get('/me', async (req, res) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, getJwtSecret());
+    const user = await findById(decoded.id);
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    res.json({ success: true, data: { user: formatUser(user) } });
+  } catch {
+    res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 });
 
