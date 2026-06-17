@@ -91,22 +91,24 @@ export const api = {
     if (!token) return { valid: false };
 
     try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const user = data.data?.user || data.user;
+        return user ? { valid: true, user: formatUser(user) } : { valid: false };
+      }
+    } catch {
+      // Fall through to the newer local API route.
+    }
+
+    try {
       const res = await fetch(`${API_BASE}/auth/verify`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) return res.json();
-    } catch {
-      // Fall through to the older Render API route.
-    }
-
-    try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) return { valid: false };
-      const data = await res.json();
-      const user = data.data?.user || data.user;
-      return user ? { valid: true, user: formatUser(user) } : { valid: false };
+      return { valid: false };
     } catch {
       return { valid: false };
     }
