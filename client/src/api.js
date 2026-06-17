@@ -51,6 +51,17 @@ const normalizeAuthResponse = (data) => {
   };
 };
 
+const normalizeRecipients = (recipients) => {
+  if (Array.isArray(recipients)) {
+    return recipients.map((email) => email.trim()).filter(Boolean);
+  }
+
+  return recipients
+    .split(/[,;\n]+/)
+    .map((email) => email.trim())
+    .filter(Boolean);
+};
+
 export const api = {
   async signup({ name, email, password, confirmPassword }) {
     const options = {
@@ -108,7 +119,7 @@ export const api = {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${getToken()}`,
       },
-      body: JSON.stringify({ subject, body, recipients }),
+      body: JSON.stringify({ subject, body, recipients: normalizeRecipients(recipients) }),
     });
   },
 
